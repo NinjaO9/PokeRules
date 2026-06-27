@@ -29,6 +29,7 @@ PROBE_INTERVAL = 60 -- frames
 
 -- Global variables
 local frame_count = 0
+local iterations = 0
 
 -- Mapping for decoding pkmn characters
 local decode_map = {
@@ -60,9 +61,11 @@ local pokemonInfo = {
 local function getPokemonCurHealth(pkmn)
     return emu:read16(PARTY_POKEMON_STARTADDR[pkmn] + CURRENT_HEALTH_OFFSET)
 end
+
 local function getPokemonMaxHealth(pkmn)
     return emu:read16(PARTY_POKEMON_STARTADDR[pkmn] + MAX_HEALTH_OFFSET)
 end
+
 local function getPokemonNickname(pkmn)
     local nickname = ""
     for i = 0, 9 do
@@ -73,6 +76,15 @@ local function getPokemonNickname(pkmn)
         nickname = nickname .. (decode_map[char] or "?")
     end
     return nickname
+end
+
+local function displayPkmnTeam()
+    local pkmn = 0
+    console:log(string.format("TEAM LAYOUT:"))
+    while trainerParty.pokemon[pkmn] ~= nil and pkmn ~= 6 do
+        console:log(string.format("[Slot %d]: %s: %d/%d HP", pkmn, trainerParty.pokemon[pkmn].nickname, trainerParty.pokemon[pkmn].current_health, trainerParty.pokemon[pkmn].max_health))
+        pkmn = pkmn + 1
+    end
 end
 
 local function readPokemonInfo(pkmn)
@@ -102,7 +114,19 @@ local function updateReadPokemonInfo(pkmn, newInfo)
     trainerParty.pokemon[pkmn] = newInfo
 end
 
+local function movePkmnUp(pkmn, party)
+    while pkmn ~= 6 do
+        local exists = emu:read8(PARTY_POKEMON_STARTADDR[pkmn + 1]) ~= 0x00
+        if exists and party[pkmn] == nil then
+            party[pkmn] = party[pkmn + 1]
+            party[pkmn + 1] = nil
+        end
+        pkmn = pkmn + 1
+    end
+end
+
 local function update()
+    console:log(string.format("Size: %d", emu:read8(PARTY_POKEMON_1 - 0x25B))) -- 0x02024029
     for pkmn = 1, 6 do
         local exists = emu:read8(PARTY_POKEMON_STARTADDR[pkmn]) ~= 0x00
         if not exists then
@@ -110,6 +134,7 @@ local function update()
                 console:log(string.format("[Slot %d][REMOVED]: %s", pkmn, trainerParty.pokemon[pkmn].nickname))
             end
             trainerParty.pokemon[pkmn] = nil
+            movePkmnUp(pkmn, trainerParty)
             break
         end
         updateReadPokemonInfo(pkmn, readPokemonInfo(pkmn))
@@ -119,10 +144,15 @@ end
 local function run()
     if PROBE_INTERVAL - frame_count > 0 then
         frame_count = frame_count + 1
+        iterations = iterations + 1
         return
     else
         frame_count = 0
         update()
+    end
+    if iterations == 3 then
+        iterations = 0
+        displayPkmnTeam()
     end
 end
 
